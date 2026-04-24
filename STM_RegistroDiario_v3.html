@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>STM · Registro Diario</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gun/sea.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
 /* ───────────────────────────────────────────
    DESIGN TOKENS
@@ -1283,13 +1283,19 @@ EMPRESAS.forEach(emp=>{const o=document.createElement('option');o.value=emp;o.te
 (()=>{const d=new Date();document.getElementById('todayLabel').textContent=`${WDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`})();
 
 /* ══════════════════════════════════════
-   CLOUD SYNC — GUN.JS (P2P, sin cuenta)
-   ID único de esta app — NO modificar
+   CLOUD SYNC — FIREBASE REALTIME DB
 ══════════════════════════════════════ */
-const APP_ID = 'stm_registro_diario_k9p2m7x4_v11';
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAlsBfeb2K0ZISekOjTokPVf6nBTnEj9Kg",
+  authDomain: "stm-sync-490a8.firebaseapp.com",
+  databaseURL: "https://stm-sync-490a8-default-rtdb.firebaseio.com",
+  projectId: "stm-sync-490a8",
+  storageBucket: "stm-sync-490a8.firebasestorage.app",
+  messagingSenderId: "306070145324",
+  appId: "1:306070145324:web:e1f590d90a0dcf46254489"
+};
 
-let _gun = null;
-let _ws  = null;
+let _db = null;
 let _syncReady = false;
 let _toastTmr  = null;
 let _rerenderTmr = null;
@@ -1318,89 +1324,62 @@ function scheduleRerender(){
 
 function initGun(){
   try{
-    _gun = Gun({
-      peers:[
-        'https://gun-relay.trution.com/gun',
-        'https://relay.peer.ooo/gun',
-        'https://gundb-relay-mlc.glitch.me/gun',
-        'wss://gundb-relay-mlc.glitch.me/gun'
-      ],
-      localStorage:false,
-      radisk:false
-    });
-    _ws = _gun.get(APP_ID);
+    firebase.initializeApp(FIREBASE_CONFIG);
+    _db = firebase.database();
+    const ref = _db.ref('stm_registro_diario');
 
-    /* Escuchar TODOS los días en tiempo real */
-    _ws.map().on((data, key)=>{
-      if(!key||!key.startsWith('dreg_')||data===null||data===undefined)return;
-      try{
-        const str = typeof data==='string' ? data : JSON.stringify(data);
-        const existing = localStorage.getItem(key);
-        if(existing!==str){
+    // Escuchar cambios en tiempo real
+    ref.on('value', snap => {
+      const data = snap.val();
+      if(!data) return;
+      let changed = false;
+      Object.entries(data).forEach(([key, val]) => {
+        if(!key.startsWith('dreg_')) return;
+        const str = typeof val === 'string' ? val : JSON.stringify(val);
+        if(localStorage.getItem(key) !== str){
           localStorage.setItem(key, str);
-          scheduleRerender();
+          changed = true;
         }
-      }catch(e){}
-    });
-
-    /* Detectar conexión real via .get('~') trick */
-    let connTimer = setTimeout(()=>{
-      // Si en 8s no hubo respuesta, aún puede funcionar localmente
+      });
       if(!_syncReady){
-        setSyncPill('','Sin señal — modo local');
-        showToast('err','Sin internet — guardando solo local',4000);
-      }
-    },8000);
-
-    // Gun dispara callbacks aunque offline; detectamos primer dato remoto
-    _gun.on('out',{get:{'^':APP_ID+'/'}}).on(()=>{
-      if(!_syncReady){
-        _syncReady=true;
-        clearTimeout(connTimer);
+        _syncReady = true;
         setSyncPill('online','● En línea');
-        showToast('ok','✓ Sincronizado con la nube',2500);
+        showToast('ok','✓ Conectado y sincronizado',2500);
       }
+      if(changed) scheduleRerender();
+    }, err => {
+      setSyncPill('','Sin conexión');
+      showToast('err','✗ Error de sincronización',3000);
     });
 
-    // Fallback: marcar online si algún callback llega en 3s
+    // Push datos locales al conectar
     setTimeout(()=>{
-      if(!_syncReady){
-        _syncReady=true;
-        clearTimeout(connTimer);
-        setSyncPill('online','● Conectado');
-      }
-    },3000);
-
-    // Sincronizar PUSH de datos locales al conectar
-    setTimeout(()=>{
-      try{
-        const keys=Object.keys(localStorage).filter(k=>k.startsWith('dreg_'));
-        keys.forEach(k=>{
-          const val=localStorage.getItem(k);
-          if(val) _ws.get(k).put(val);
-        });
-      }catch(e){}
-    },4000);
+      const keys = Object.keys(localStorage).filter(k=>k.startsWith('dreg_'));
+      keys.forEach(k=>{
+        const val = localStorage.getItem(k);
+        if(val) _db.ref('stm_registro_diario/'+k).set(val);
+      });
+    }, 2000);
 
   }catch(e){
     setSyncPill('','Sin conexión');
-    console.warn('Gun init error:',e);
+    console.warn('Firebase init error:',e);
   }
 }
 
 function cloudSave(k, v){
-  if(!_ws)return;
+  if(!_db) return;
   try{
     setSyncPill('syncing','↑ Guardando…');
-    _ws.get(k).put(JSON.stringify(v), ack=>{
-      if(ack&&ack.err){
-        setSyncPill('','Error al guardar');
-        showToast('err','✗ Error al guardar en la nube');
-      } else {
+    _db.ref('stm_registro_diario/'+k).set(JSON.stringify(v))
+      .then(()=>{
         setSyncPill('online','● En línea');
         showToast('ok','✓ Guardado y sincronizado',1800);
-      }
-    });
+      })
+      .catch(err=>{
+        setSyncPill('','Error al guardar');
+        showToast('err','✗ Error al guardar');
+      });
   }catch(e){}
 }
 
