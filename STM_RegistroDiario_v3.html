@@ -1320,9 +1320,10 @@ function initGun(){
   try{
     _gun = Gun({
       peers:[
-        'https://gun-manhattan.herokuapp.com/gun',
-        'https://peer.wallie.io/gun',
-        'https://gun-us.herokuapp.com/gun'
+        'https://gun-relay.trution.com/gun',
+        'https://relay.peer.ooo/gun',
+        'https://gundb-relay-mlc.glitch.me/gun',
+        'wss://gundb-relay-mlc.glitch.me/gun'
       ],
       localStorage:false,
       radisk:false
@@ -1369,6 +1370,17 @@ function initGun(){
         setSyncPill('online','● Conectado');
       }
     },3000);
+
+    // Sincronizar PUSH de datos locales al conectar
+    setTimeout(()=>{
+      try{
+        const keys=Object.keys(localStorage).filter(k=>k.startsWith('dreg_'));
+        keys.forEach(k=>{
+          const val=localStorage.getItem(k);
+          if(val) _ws.get(k).put(val);
+        });
+      }catch(e){}
+    },4000);
 
   }catch(e){
     setSyncPill('','Sin conexión');
@@ -1713,10 +1725,18 @@ function routingDrop(e){
 function routingFileSelected(e){ const f = e.target.files[0]; if(f) processRoutingFile(f); }
 
 function processRoutingFile(file){
+  const isText = file.type.includes('text') || file.type.includes('csv')
+              || /\.(csv|txt|tsv)$/i.test(file.name);
   const reader = new FileReader();
   reader.onload = ev => {
-    const base64 = ev.target.result.split(',')[1];
-    routingFile = { name: file.name, type: file.type, base64 };
+    if(isText){
+      // CSV/TXT: guardamos el texto directamente — sin atob, sin problemas de UTF-8
+      routingFile = { name: file.name, type: file.type, text: ev.target.result };
+    } else {
+      // Imagen o PDF: base64
+      const base64 = ev.target.result.split(',')[1];
+      routingFile = { name: file.name, type: file.type, base64 };
+    }
     const wrap = document.getElementById('routingFileBadge');
     wrap.style.display = 'flex';
     wrap.innerHTML = `<div class="routing-file-badge" style="width:100%">
@@ -1727,7 +1747,9 @@ function processRoutingFile(file){
       </button></div>`;
     document.getElementById('routingDropZone').style.display = 'none';
   };
-  reader.readAsDataURL(file);
+  // Leer como texto plano para CSV/TXT; como DataURL para binarios
+  if(isText) reader.readAsText(file, 'UTF-8');
+  else       reader.readAsDataURL(file);
 }
 
 function removeRoutingFile(){
@@ -1745,27 +1767,26 @@ function clearRouting(){
 
 /* ── Construir payload para Claude según tipo de input ── */
 function buildRoutingPayload(){
-  const text = document.getElementById('routingText').value.trim();
+  const pastedText = document.getElementById('routingText').value.trim();
   if(routingFile){
-    const {type, base64, name} = routingFile;
+    const {type, name} = routingFile;
     if(type.startsWith('image/')){
       return [{ role:'user', content:[
-        { type:'image', source:{ type:'base64', media_type:type, data:base64 }},
-        { type:'text',  text:'Este es un documento/foto de ruteo de repartos. Extrae todas las entradas según las instrucciones del sistema.' }
+        { type:'image', source:{ type:'base64', media_type:type, data:routingFile.base64 }},
+        { type:'text',  text:'Este es un documento/foto de ruteo de repartos. Extrae todas las entradas segun las instrucciones del sistema.' }
       ]}];
     }
     if(type === 'application/pdf'){
       return [{ role:'user', content:[
-        { type:'document', source:{ type:'base64', media_type:'application/pdf', data:base64 }},
-        { type:'text', text:'Este es un PDF de ruteo. Extrae todas las entradas de ruta según las instrucciones del sistema.' }
+        { type:'document', source:{ type:'base64', media_type:'application/pdf', data:routingFile.base64 }},
+        { type:'text', text:'Este es un PDF de ruteo. Extrae todas las entradas de ruta segun las instrucciones del sistema.' }
       ]}];
     }
-    // txt/csv: decodificar base64
-    try{ const decoded = atob(base64);
-      return [{ role:'user', content:`Documento de ruteo (${name}):\n\n${decoded.slice(0,8000)}` }];
-    }catch(e){ return [{ role:'user', content:`Archivo de ruteo: ${name}` }]; }
+    if(routingFile.text !== undefined){
+      return [{ role:'user', content:'Documento de ruteo ('+name+'):\n\n'+routingFile.text.slice(0,12000) }];
+    }
   }
-  if(text) return [{ role:'user', content:`Documento de ruteo:\n\n${text.slice(0,8000)}` }];
+  if(pastedText) return [{ role:'user', content:'Documento de ruteo:\n\n'+pastedText.slice(0,12000) }];
   return null;
 }
 
@@ -1804,6 +1825,15 @@ Si no encuentras entradas: {"entries":[],"warning":"no_routes_found"}`;
 
 /* ── Analizar ── */
 async function analyzeRouting(){
+  // Verificar API Key antes de intentar
+  if(!getApiKey()){
+    document.getElementById('routingResults').innerHTML =
+      `<div class="routing-error" style="display:flex;align-items:center;gap:10px">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Se necesita API Key para analizar. Configúrala con el ícono ⚙ del encabezado.
+      </div>`;
+    return;
+  }
   const payload = buildRoutingPayload();
   if(!payload){ alert('Sube un archivo o pega el texto del documento de ruteo.'); return; }
   const results = document.getElementById('routingResults');
@@ -1815,7 +1845,11 @@ async function analyzeRouting(){
     const parsed = await callRoutingAI(payload);
     renderRoutingResults(parsed);
   }catch(e){
-    results.innerHTML = `<div class="routing-error">Error: ${esc(e.message)}</div>`;
+    const msg = e.message||'';
+    const hint = msg.includes('401') ? ' — Verifica tu API Key en ⚙'
+               : msg.includes('fetch') ? ' — Sin conexión o API Key inválida'
+               : '';
+    results.innerHTML = `<div class="routing-error">Error: ${esc(msg)}${hint}</div>`;
   }finally{ btn.disabled = false; }
 }
 
