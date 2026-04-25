@@ -1521,9 +1521,49 @@ function toggleConfirm(){
   }
 }
 
+function cleanScannedId(raw){
+  // Extrae solo el numero de ID de strings como [ID[ñ[46925547763[,[T[ñ[LM[*
+  // Busca secuencia de 8+ digitos
+  const match = raw.match(/\d{8,}/);
+  if(match) return match[0];
+  // Si no hay numero largo, limpiar caracteres especiales y devolver lo que queda
+  return raw.replace(/[^a-zA-Z0-9]/g,'').trim();
+}
+
 function addDetailId(){
-  const input=document.getElementById('detailIdInput');const val=input.value.trim();if(!val)return;
+  const input=document.getElementById('detailIdInput');
+  const raw=input.value.trim();if(!raw)return;
+  const val=cleanScannedId(raw);
+  if(!val){ input.value=''; input.focus(); return; }
+
   const blocks=getBlocks();if(!blocks[detailIdx].ids)blocks[detailIdx].ids=[];
+
+  // Verificar duplicado en el bloque actual
+  const exists = blocks[detailIdx].ids.some(r=>r.id===val);
+  if(exists){
+    input.value='';
+    // Mostrar alerta de duplicado
+    let dup = document.getElementById('dupAlert');
+    if(!dup){
+      dup = document.createElement('div');
+      dup.id='dupAlert';
+      dup.style.cssText='position:fixed;top:80px;left:50%;transform:translateX(-50%);'+
+        'background:#3D1C1C;border:2px solid #FF4444;border-radius:10px;'+
+        'color:#FF6666;font-family:monospace;font-size:14px;font-weight:700;'+
+        'padding:14px 28px;z-index:9999;text-align:center;'+
+        'box-shadow:0 4px 24px rgba(255,0,0,0.35);letter-spacing:0.05em;';
+      document.body.appendChild(dup);
+    }
+    dup.innerHTML='⚠️ YA ESCANEASTE ESTE PAQUETE<br><span style="font-size:11px;color:#FF9999;font-weight:400">ID: '+val+'</span>';
+    dup.style.display='block';
+    // Vibrar si disponible
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+    clearTimeout(dup._t);
+    dup._t=setTimeout(()=>{ dup.style.display='none'; },3000);
+    input.focus();
+    return;
+  }
+
   blocks[detailIdx].ids.push({id:val,ts:Date.now()});setBlocks(blocks);input.value='';
   renderDetailIds();updateDetailHeader();
   setTimeout(()=>{const wrap=document.getElementById('detailIdsWrap');const rows=wrap.querySelectorAll('tbody tr');if(rows.length)rows[rows.length-1].classList.add('new-row')},20);
