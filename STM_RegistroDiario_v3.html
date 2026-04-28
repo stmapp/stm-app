@@ -1012,6 +1012,41 @@ body::before{
   text-align:center;padding:2rem 0;
   font-family:var(--mono);font-size:11px;color:var(--tx3);letter-spacing:.04em;
 }
+
+/* ── GLOBAL ID SEARCH ── */
+.global-search-wrap{position:relative;display:flex;align-items:center}
+.global-search-input{
+  background:var(--bg1);border:1px solid var(--br2);border-radius:var(--rs);
+  padding:8px 12px;color:var(--tx0);font-family:var(--mono);font-size:12px;
+  outline:none;transition:all .18s;width:100%;
+}
+.global-search-input:focus{border-color:var(--acc);background:var(--bg3);box-shadow:0 0 0 3px var(--acc-glow)}
+.global-search-input::placeholder{color:var(--tx3)}
+.global-search-results{display:none}
+.gs-result-item{
+  display:flex;flex-direction:column;gap:2px;
+  padding:10px 14px;cursor:pointer;transition:background .12s;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+.gs-result-item:last-child{border-bottom:none}
+.gs-result-item:hover{background:rgba(124,111,232,.12)}
+.gs-result-id{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--acc-hi);letter-spacing:.04em}
+.gs-result-meta{font-family:var(--mono);font-size:10px;color:var(--tx3);display:flex;gap:10px;flex-wrap:wrap}
+.gs-result-pat{color:var(--tx2);font-weight:600}
+.gs-no-results{padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--tx3);text-align:center}
+/* ── PER-BLOCK ID SEARCH ── */
+.block-id-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:8px}
+.block-id-search-input{
+  background:var(--bg1);border:1px solid var(--br2);border-radius:var(--rs);
+  padding:6px 32px 6px 10px;color:var(--tx0);font-family:var(--mono);font-size:11px;
+  outline:none;transition:all .15s;width:100%;
+}
+.block-id-search-input:focus{border-color:var(--acc);background:var(--bg2);box-shadow:0 0 0 2px var(--acc-glow)}
+.block-id-search-input::placeholder{color:var(--tx3)}
+.block-search-icon{position:absolute;right:9px;top:50%;transform:translateY(-50%);color:var(--tx3);pointer-events:none}
+.block-search-icon svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.ids-table tr.id-hidden{display:none}
+.ids-table tr.id-highlight td{background:rgba(124,111,232,.1)}
 </style>
 </head>
 <body>
