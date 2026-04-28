@@ -1028,6 +1028,15 @@ body::before{
     <span class="brand-tag">STM</span>
   </div>
   <div class="header-right">
+    <div class="global-search-wrap" id="globalSearchWrap">
+      <input class="global-search-input" id="globalSearchInput" type="text"
+        placeholder="Buscar ID…"
+        oninput="globalSearchQuery(this.value)"
+        onkeydown="if(event.key==='Escape'){closeGlobalSearch()}"
+        autocomplete="off">
+      <span class="global-search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <div class="global-search-results" id="globalSearchResults" style="display:none"></div>
+    </div>
     <div class="header-date" id="todayLabel"></div>
     <div class="sync-pill" id="syncPill">
       <span class="sync-dot"></span>
@@ -1599,6 +1608,10 @@ function renderDetailIds(){
   if(!ids.length){
     wrap.innerHTML=`<div class="empty-ids"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Sin IDs — empieza a escanear arriba</div>`;return;
   }
+  // Per-block search bar
+  const searchBar=document.createElement('div');searchBar.className='block-id-search-wrap';
+  searchBar.innerHTML=`<input class="block-id-search-input" placeholder="Buscar ID en esta patente…" oninput="filterBlockIds(this.value)" autocomplete="off"><span class="block-search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>`;
+  wrap.appendChild(searchBar);
   const t=document.createElement('table');t.className='ids-table';
   t.innerHTML=`<thead><tr><th>#</th><th>ID</th><th>Hora</th><th style="text-align:right">Acciones</th></tr></thead>`;
   const tb=document.createElement('tbody');
@@ -1936,6 +1949,124 @@ function routingCopyAll(){
     btn.style.color = 'var(--ok)'; btn.style.borderColor = 'var(--ok-b)';
     setTimeout(()=>{ btn.innerHTML=orig; btn.style.color=''; btn.style.borderColor=''; }, 1800);
   }).catch(()=>alert('Error al copiar'));
+}
+
+/* ══════════════════════════════════════
+   GLOBAL ID SEARCH
+══════════════════════════════════════ */
+function globalSearchQuery(q){
+  const res = document.getElementById('globalSearchResults');
+  q = q.trim();
+  if(q.length < 3){ res.style.display='none'; return; }
+
+  // Search all blocks across all days
+  const allKeys = Object.keys(localStorage).filter(k=>k.startsWith('dreg_'));
+  const matches = [];
+
+  allKeys.forEach(key => {
+    try{
+      const data = JSON.parse(localStorage.getItem(key));
+      if(!Array.isArray(data)) return;
+      // key format: dreg_YYYY-MM-DD
+      const dateStr = key.replace('dreg_','');
+      data.forEach((block, blockIdx) => {
+        const ids = block.ids || [];
+        ids.forEach(r => {
+          const idStr = (r.id||'').toString();
+          if(idStr.includes(q)){
+            matches.push({
+              id: idStr,
+              pat: block.pat || '—',
+              emp: block.emp || '',
+              date: dateStr,
+              blockIdx
+            });
+          }
+        });
+      });
+    }catch(e){}
+  });
+
+  if(!matches.length){
+    res.innerHTML=`<div class="gs-no-results">Sin resultados para "${esc(q)}"</div>`;
+    res.style.display='block'; return;
+  }
+
+  // Show up to 8 results
+  const shown = matches.slice(0,8);
+  res.innerHTML = shown.map(m=>`
+    <div class="gs-result-item" onclick="globalSearchGoTo('${m.date}',${m.blockIdx})">
+      <span class="gs-result-id">${esc(m.id)}</span>
+      <div class="gs-result-meta">
+        <span class="gs-result-pat">🚛 ${esc(m.pat)}</span>
+        ${m.emp?`<span>${esc(m.emp)}</span>`:''}
+        <span class="gs-result-date">📅 ${formatDateLabel(m.date)}</span>
+      </div>
+    </div>`).join('');
+  if(matches.length>8) res.innerHTML+=`<div class="gs-no-results">+${matches.length-8} más resultados</div>`;
+  res.style.display='block';
+}
+
+function formatDateLabel(dateStr){
+  try{
+    const [y,m,d] = dateStr.split('-');
+    const months=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return `${parseInt(d)} ${months[parseInt(m)-1]} ${y}`;
+  }catch(e){ return dateStr; }
+}
+
+function globalSearchGoTo(dateStr, blockIdx){
+  closeGlobalSearch();
+  // Navigate to that date's modal
+  const [y,m,d] = dateStr.split('-').map(Number);
+  // Set calendar to that month if needed
+  if(currentYear!==y || currentMonth!==(m-1)){
+    currentYear=y; currentMonth=m-1; renderCal();
+  }
+  // Open modal for that day
+  setTimeout(()=>{
+    openDay(new Date(y,m-1,d));
+    // After modal opens, scroll to that block
+    setTimeout(()=>{
+      detailIdx = blockIdx;
+      renderDetailIds();
+      updateDetailHeader();
+      // Highlight the block in the summary
+      const rows = document.querySelectorAll('.summary-row');
+      if(rows[blockIdx]){ rows[blockIdx].scrollIntoView({behavior:'smooth',block:'center'}); rows[blockIdx].classList.add('highlight-row'); setTimeout(()=>rows[blockIdx].classList.remove('highlight-row'),2000); }
+    }, 300);
+  }, 100);
+}
+
+function closeGlobalSearch(){
+  document.getElementById('globalSearchResults').style.display='none';
+  document.getElementById('globalSearchInput').value='';
+}
+
+// Close when clicking outside
+document.addEventListener('click', e=>{
+  const wrap = document.getElementById('globalSearchWrap');
+  if(wrap && !wrap.contains(e.target)) closeGlobalSearch();
+});
+
+/* ══════════════════════════════════════
+   PER-BLOCK ID FILTER
+══════════════════════════════════════ */
+function filterBlockIds(q){
+  q = q.trim().toLowerCase();
+  const rows = document.querySelectorAll('#detailIdsWrap .ids-table tbody tr');
+  rows.forEach(row=>{
+    const idCell = row.querySelector('td:nth-child(2)');
+    if(!idCell){ row.classList.remove('id-hidden'); return; }
+    const idText = idCell.textContent.toLowerCase();
+    if(!q || idText.includes(q)){
+      row.classList.remove('id-hidden');
+      row.classList.toggle('id-highlight', q.length>0 && idText.includes(q));
+    } else {
+      row.classList.add('id-hidden');
+      row.classList.remove('id-highlight');
+    }
+  });
 }
 
 renderCal();
