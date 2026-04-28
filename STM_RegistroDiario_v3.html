@@ -1063,20 +1063,21 @@ body::before{
     <span class="brand-tag">STM</span>
   </div>
   <div class="header-right">
-    <div class="global-search-wrap" id="globalSearchWrap">
-      <button class="settings-btn" id="globalSearchToggle" onclick="toggleGlobalSearch()" title="Buscar ID">
+    <div id="globalSearchWrap" style="position:relative;display:flex;align-items:center">
+      <button id="globalSearchToggle" onclick="toggleGlobalSearch()" title="Buscar ID"
+        style="width:33px;height:33px;background:none;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:rgba(255,255,255,.5);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
         <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </button>
-      <div id="globalSearchPanel" style="display:none;position:absolute;top:52px;right:12px;z-index:999;background:var(--bg2);border:1px solid var(--br2);border-radius:var(--r);padding:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);min-width:300px;">
+      <div id="globalSearchPanel" style="display:none;position:fixed;top:56px;right:12px;z-index:9999;background:#212E48;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);min-width:300px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <input class="global-search-input" id="globalSearchInput" type="text"
-            placeholder="Escribe una ID para buscar…"
+          <input id="globalSearchInput" type="text" placeholder="Buscar ID…"
             oninput="globalSearchQuery(this.value)"
             onkeydown="if(event.key==='Escape'){closeGlobalSearch()}"
-            autocomplete="off" style="width:100%;padding:8px 12px;font-size:12px;">
-          <button onclick="closeGlobalSearch()" style="background:none;border:none;color:var(--tx3);cursor:pointer;font-size:16px;padding:0 4px">✕</button>
+            autocomplete="off"
+            style="flex:1;background:#1C2840;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 12px;color:#fff;font-family:monospace;font-size:12px;outline:none;">
+          <button onclick="closeGlobalSearch()" style="background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:18px;padding:0 4px">✕</button>
         </div>
-        <div class="global-search-results" id="globalSearchResults" style="display:none"></div>
+        <div id="globalSearchResults"></div>
       </div>
     </div>
     <div class="header-date" id="todayLabel"></div>
